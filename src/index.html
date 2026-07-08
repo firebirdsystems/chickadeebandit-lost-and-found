@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lost &amp; Found</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: var(--hub-bg, #f9fafb);
+      --surface: var(--hub-surface, #ffffff);
+      --border: var(--hub-border, #e5e7eb);
+      --border-mid: var(--hub-border, #d1d5db);
+      --text: var(--hub-text, #111827);
+      --muted: var(--hub-text-muted, #6b7280);
+      --accent: var(--hub-primary, #0f766e);
+      --accent-hover: var(--hub-primary-hover, #0b5b54);
+      --accent-fg: var(--hub-primary-fg, #ffffff);
+      --radius: var(--hub-radius, 8px);
+      --green: #047857; --green-soft: #d1fae5;
+      --amber: #b45309; --amber-soft: #fef3c7;
+      --red: #b91c1c; --red-soft: #fee2e2;
+      --blue-soft: #dbeafe;
+      --shadow: 0 1px 3px rgba(15, 23, 42, .07);
+    }
+    body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--hub-font, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif); font-size: var(--hub-font-size, 15px); line-height: 1.5; }
+    .app { max-width: 860px; margin: 0 auto; padding: 16px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    h1 { font-size: 1.35rem; line-height: 1.2; }
+    h2 { font-size: 1rem; margin-bottom: 10px; }
+    .muted { color: var(--muted); } .tiny { font-size: .78rem; }
+    .grid { display: grid; gap: 12px; }
+    @media (min-width: 640px) { .grid.cards { grid-template-columns: 1fr 1fr; } }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+    .post-photo { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: #f1f5f9; }
+    .post-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .post-title { font-weight: 750; font-size: 1.02rem; }
+    .post-meta { margin-top: 3px; color: var(--muted); font-size: .82rem; }
+    .post-desc { margin-top: 8px; font-size: .92rem; }
+    .pill { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 9px; border-radius: 999px; background: #f1f5f9; color: var(--muted); font-size: .72rem; font-weight: 800; }
+    .pill.lost { background: var(--red-soft); color: var(--red); }
+    .pill.found { background: var(--green-soft); color: var(--green); }
+    .pill.info { background: var(--blue-soft); color: #1d4ed8; }
+    .pill.warn { background: var(--amber-soft); color: var(--amber); }
+    .match { margin-top: 10px; border-top: 1px dashed var(--border-mid); padding-top: 10px; }
+    .match-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .85rem; }
+    .tabs { display: flex; gap: 4px; background: var(--border); padding: 3px; border-radius: 10px; margin-bottom: 14px; }
+    .tab { flex: 1; border: 0; border-radius: 8px; background: transparent; color: var(--muted); padding: 7px; font-weight: 700; cursor: pointer; }
+    .tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid transparent; border-radius: 8px; padding: 8px 12px; font: inherit; font-size: .86rem; font-weight: 700; cursor: pointer; min-height: 38px; background: var(--accent); color: var(--accent-fg); }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: .48; cursor: default; }
+    .btn-ghost { background: transparent; color: var(--text); border-color: var(--border-mid); }
+    .btn-ghost:hover { background: #f8fafc; }
+    .btn-danger { background: var(--red-soft); color: var(--red); border-color: transparent; }
+    .btn-sm { min-height: 30px; padding: 4px 9px; font-size: .77rem; }
+    .row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .form { display: grid; gap: 10px; }
+    .field { display: grid; gap: 4px; }
+    label { font-size: .76rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 800; }
+    input, textarea, select { width: 100%; border: 1.5px solid var(--border-mid); border-radius: 8px; padding: 9px 11px; font: inherit; background: var(--surface); color: var(--text); }
+    textarea { min-height: 64px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+    .seg { display: flex; gap: 6px; }
+    .seg button { flex: 1; border: 1.5px solid var(--border-mid); background: var(--surface); border-radius: 8px; padding: 9px; font-weight: 700; cursor: pointer; color: var(--text); }
+    .seg button.active { border-color: var(--accent); color: var(--accent); background: #ecfeff; }
+    .empty, .loading { color: var(--muted); text-align: center; padding: 32px 16px; }
+    .error { background: var(--red-soft); color: var(--red); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
+    .notice { background: var(--green-soft); color: var(--green); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+    .modal { background: var(--surface); border-radius: 12px; padding: 18px; width: 100%; max-width: 480px; box-shadow: 0 12px 40px rgba(0,0,0,.25); max-height: 90vh; overflow-y: auto; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+    .grid.two { display: grid; gap: 10px; }
+    @media (min-width: 520px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+  </style>
+  <base href="/run/lost-and-found/">
+</head>
+<body>
+<div class="app">
+  <div id="root" class="loading">Loading…</div>
+</div>
+
+<script type="module">
+import { esc, isAdult, hubConfirm, createFilesHelper } from "/hub-sdk.js";
+
+const CONTEXT = window.__CONTEXT_URL ?? "";
+const DB = window.__DB_URL ?? "";
+const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
+const FILES = window.__FILES_URL ?? "";
+const files = createFilesHelper(FILES);
+
+const CATEGORIES = ["pet", "keys", "package", "bike", "wallet", "other"];
+const CAT_LABEL = { pet: "Pet", keys: "Keys", package: "Package", bike: "Bike", wallet: "Wallet", other: "Other" };
+
+let members = [];
+let currentMember = null;
+let posts = [];
+let view = "open";       // 'open' | 'resolved'
+let draftKind = "lost";
+let error = "";
+let notice = "";
+let modalEl = null;
+
+function nowIso() { return new Date().toISOString(); }
+function uid() { return crypto.randomUUID(); }
+function fmtDate(v) { if (!v) return ""; return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(v)); }
+
+async function dbq(sql, params = []) {
+  if (!DB) return { rows: [] };
+  const res = await fetch(DB, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql, params }) });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  return json;
+}
+
+async function loadMembers() {
+  if (!CONTEXT) {
+    members = [{ id: "demo-1", name: "Alex", role: "adult" }, { id: "demo-2", name: "Jordan", role: "adult" }];
+  } else {
+    try { const res = await fetch(`${CONTEXT}?keys=family.members`); members = ((await res.json())["family.members"]) ?? []; }
+    catch { members = []; }
+  }
+  currentMember = HUB_MEMBER ?? members[0] ?? { id: "guest", name: "Guest", role: "adult" };
+}
+
+function seedDemo() {
+  posts = [
+    { id: "d1", kind: "lost", title: "Grey tabby cat", category: "pet", description: "Answers to Miso. Very shy.", location: "Near the north gate", photo_file_id: "", visibility: "everyone", status: "open", matched_post_id: "", reported_by_id: "demo-1", reported_by_name: "Alex", created_at: nowIso(), resolved_at: null },
+    { id: "d2", kind: "found", title: "Cat spotted", category: "pet", description: "Grey cat hanging around building C.", location: "Building C courtyard", photo_file_id: "", visibility: "everyone", status: "open", matched_post_id: "", reported_by_id: "demo-2", reported_by_name: "Jordan", created_at: nowIso(), resolved_at: null },
+    { id: "d3", kind: "found", title: "Set of keys", category: "keys", description: "Toyota key + 3 others on a red lanyard.", location: "Pool deck", photo_file_id: "", visibility: "everyone", status: "open", matched_post_id: "", reported_by_id: "demo-2", reported_by_name: "Jordan", created_at: nowIso(), resolved_at: null },
+  ];
+}
+
+async function loadPosts() {
+  if (!DB) { seedDemo(); return; }
+  const rows = await dbq("SELECT * FROM app_lost_and_found__posts ORDER BY created_at DESC");
+  posts = rows.rows;
+}
+
+async function refresh() {
+  clearMessages();
+  try { await Promise.all([loadMembers(), loadPosts()]); render(); }
+  catch (e) { error = e.message; render(); }
+}
+
+function clearMessages() { error = ""; notice = ""; }
+function showError(m) { error = m; notice = ""; render(); }
+function showNotice(m) { notice = m; error = ""; render(); }
+
+// Client gate mirrors the owner_or_visibility policy: the owner can always
+// write their own post; any adult can write any post.
+function canManage(post) { return !!currentMember && (post.reported_by_id === currentMember.id || isAdult(currentMember)); }
+
+const STOP = new Set(["the","a","an","of","and","near","by","my","our","lost","found","set","pair","some","at","in","on","to"]);
+function tokens(post) {
+  return new Set(`${post.title} ${post.description}`.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)));
+}
+// Suggest opposite-kind open posts that share a category or keywords.
+function matchesFor(post) {
+  if (post.status !== "open") return [];
+  const opp = post.kind === "lost" ? "found" : "lost";
+  const mine = tokens(post);
+  return posts
+    .filter(p => p.status === "open" && p.kind === opp)
+    .map(p => {
+      const theirs = tokens(p);
+      let overlap = 0;
+      for (const w of mine) if (theirs.has(w)) overlap++;
+      const score = (p.category === post.category ? 2 : 0) + overlap;
+      return { post: p, score };
+    })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(x => x.post);
+}
+
+// ── mutations ────────────────────────────────────────────────────────────────
+async function createPost(fields, fileId) {
+  const title = fields.title.trim();
+  if (!title) return showError("Give the item a short title.");
+  const row = {
+    id: uid(), kind: draftKind, title, category: fields.category,
+    description: fields.description.trim(), location: fields.location.trim(),
+    photo_file_id: fileId || "", visibility: "everyone", status: "open", matched_post_id: "",
+    reported_by_id: currentMember.id, reported_by_name: currentMember.name,
+    created_at: nowIso(), resolved_at: null,
+  };
+  try {
+    if (DB) {
+      await dbq(
+        `INSERT INTO app_lost_and_found__posts (id, kind, title, category, description, location, photo_file_id, visibility, status, matched_post_id, reported_by_id, reported_by_name, created_at, resolved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'everyone', 'open', '', ?, ?, ?, NULL)`,
+        [row.id, row.kind, row.title, row.category, row.description, row.location, row.photo_file_id, row.reported_by_id, row.reported_by_name, row.created_at]
+      );
+    }
+    posts = [row, ...posts];
+    closeModal();
+    showNotice(`Posted ${draftKind === "lost" ? "a lost" : "a found"} item.`);
+  } catch (e) { showError(e.message); }
+}
+
+async function resolvePost(id) {
+  const post = posts.find(p => p.id === id);
+  if (!post || !canManage(post)) return showError("You can't close this post.");
+  const ok = await hubConfirm({ message: "Mark this as resolved?", confirmLabel: "Resolve" });
+  if (!ok) return;
+  const now = nowIso();
+  try {
+    if (DB) await dbq(`UPDATE app_lost_and_found__posts SET status='resolved', resolved_at=? WHERE id=?`, [now, id]);
+    patchPost(id, { status: "resolved", resolved_at: now });
+    showNotice("Marked resolved.");
+  } catch (e) { showError(e.message); }
+}
+
+async function confirmMatch(postId, matchId) {
+  const a = posts.find(p => p.id === postId);
+  const b = posts.find(p => p.id === matchId);
+  if (!a || !b) return;
+  // Closing both posts writes another member's row, which the owner_or_visibility
+  // policy only allows for adults — mirror that in the gate.
+  if (!isAdult(currentMember)) return showError("Only an adult/leadership member can close a matched pair.");
+  const ok = await hubConfirm({ message: `Close both “${a.title}” and “${b.title}” as claimed?`, description: "Both posts will be marked resolved and linked.", confirmLabel: "Close both" });
+  if (!ok) return;
+  const now = nowIso();
+  try {
+    if (DB) {
+      await dbq(`UPDATE app_lost_and_found__posts SET status='resolved', matched_post_id=?, resolved_at=? WHERE id=?`, [matchId, now, postId]);
+      await dbq(`UPDATE app_lost_and_found__posts SET status='resolved', matched_post_id=?, resolved_at=? WHERE id=?`, [postId, now, matchId]);
+    }
+    patchPost(postId, { status: "resolved", matched_post_id: matchId, resolved_at: now });
+    patchPost(matchId, { status: "resolved", matched_post_id: postId, resolved_at: now });
+    showNotice("Matched and closed both posts. 🎉");
+  } catch (e) { showError(e.message); }
+}
+
+async function deletePost(id) {
+  const post = posts.find(p => p.id === id);
+  if (!post || !canManage(post)) return showError("You can't delete this post.");
+  const ok = await hubConfirm({ message: `Delete “${post.title}”?`, confirmLabel: "Delete", destructive: true });
+  if (!ok) return;
+  try {
+    if (DB) await dbq(`DELETE FROM app_lost_and_found__posts WHERE id=?`, [id]);
+    if (post.photo_file_id) files.delete(post.photo_file_id).catch(() => {});
+    posts = posts.filter(p => p.id !== id);
+    showNotice("Deleted.");
+  } catch (e) { showError(e.message); }
+}
+
+function patchPost(id, patch) {
+  const idx = posts.findIndex(p => p.id === id);
+  if (idx !== -1) posts[idx] = { ...posts[idx], ...patch };
+}
+
+// ── modal ────────────────────────────────────────────────────────────────────
+function openModal(html) {
+  closeModal();
+  modalEl = document.createElement("div");
+  modalEl.className = "modal-backdrop";
+  modalEl.innerHTML = `<div class="modal">${html}</div>`;
+  modalEl.addEventListener("click", e => { if (e.target === modalEl) closeModal(); });
+  document.body.appendChild(modalEl);
+  const f = modalEl.querySelector("[data-autofocus]");
+  if (f) f.focus();
+}
+function closeModal() { modalEl?.remove(); modalEl = null; }
+
+function openPostModal() {
+  draftKind = "lost";
+  openModal(`
+    <h2>Post an item</h2>
+    <form class="form" id="post-form">
+      <div class="field">
+        <label>I'm reporting</label>
+        <div class="seg" id="kind-seg">
+          <button type="button" data-kind="lost" class="active">Something lost</button>
+          <button type="button" data-kind="found">Something found</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-title">Title</label>
+        <input id="f-title" data-autofocus placeholder="Grey tabby cat, Toyota keys…" required />
+      </div>
+      <div class="grid two">
+        <div class="field">
+          <label for="f-category">Category</label>
+          <select id="f-category">${CATEGORIES.map(c => `<option value="${c}">${CAT_LABEL[c]}</option>`).join("")}</select>
+        </div>
+        <div class="field">
+          <label for="f-location">Last-known location</label>
+          <input id="f-location" placeholder="North gate, pool deck…" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-description">Description</label>
+        <textarea id="f-description" placeholder="Colour, size, distinguishing details, contact preference"></textarea>
+      </div>
+      ${FILES ? `<div class="field">
+        <label for="f-photo">Photo (optional)</label>
+        <input id="f-photo" type="file" accept="image/*" />
+      </div>` : ""}
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close>Cancel</button>
+        <button class="btn" type="submit">Post</button>
+      </div>
+    </form>
+  `);
+}
+
+// ── render ───────────────────────────────────────────────────────────────────
+function renderMessages() { return `${error ? `<div class="error">${esc(error)}</div>` : ""}${notice ? `<div class="notice">${esc(notice)}</div>` : ""}`; }
+
+function renderPost(post) {
+  const matches = matchesFor(post);
+  const photo = post.photo_file_id && FILES ? `<img class="post-photo" src="${esc(files.url(post.photo_file_id))}" alt="${esc(post.title)}" />` : "";
+  return `
+    <article class="card">
+      ${photo}
+      <div class="post-head">
+        <div>
+          <div class="post-title">${esc(post.title)}</div>
+          <div class="post-meta">${esc(CAT_LABEL[post.category] || post.category)}${post.location ? ` · ${esc(post.location)}` : ""} · ${esc(fmtDate(post.created_at))} · ${esc(post.reported_by_name)}</div>
+        </div>
+        <span class="pill ${post.kind === "lost" ? "lost" : "found"}">${post.kind === "lost" ? "Lost" : "Found"}</span>
+      </div>
+      ${post.description ? `<div class="post-desc">${esc(post.description)}</div>` : ""}
+      ${post.status === "resolved" ? `<div class="post-meta" style="margin-top:8px;"><span class="pill">Resolved${post.resolved_at ? ` · ${esc(fmtDate(post.resolved_at))}` : ""}</span></div>` : ""}
+      ${matches.length ? `
+        <div class="match">
+          <div class="tiny muted" style="font-weight:800;margin-bottom:6px;">Possible ${post.kind === "lost" ? "found" : "lost"} match${matches.length > 1 ? "es" : ""}</div>
+          ${matches.map(m => `
+            <div class="match-row">
+              <span>${esc(m.title)} <span class="muted tiny">· ${esc(m.reported_by_name)}</span></span>
+              ${isAdult(currentMember) ? `<button class="btn btn-sm" data-match="${esc(post.id)}" data-with="${esc(m.id)}">Same item</button>` : `<span class="pill info">match?</span>`}
+            </div>
+          `).join("")}
+        </div>` : ""}
+      ${post.status === "open" && canManage(post) ? `
+        <div class="row-actions">
+          <button class="btn btn-ghost btn-sm" data-resolve="${esc(post.id)}">Mark resolved</button>
+          <button class="btn btn-danger btn-sm" data-delete="${esc(post.id)}">Delete</button>
+        </div>` : ""}
+    </article>
+  `;
+}
+
+function render() {
+  const root = document.getElementById("root");
+  root.className = "app";
+  const open = posts.filter(p => p.status === "open");
+  const resolved = posts.filter(p => p.status === "resolved");
+  const list = view === "open" ? open : resolved;
+  root.innerHTML = `
+    <div class="topbar">
+      <div>
+        <h1>🔎 Lost &amp; Found</h1>
+        <p class="muted tiny">${open.length} open · report anything lost or found nearby</p>
+      </div>
+      <button class="btn" data-add>Post item</button>
+    </div>
+    ${renderMessages()}
+    <div class="tabs">
+      <button class="tab ${view === "open" ? "active" : ""}" data-tab="open">Open${open.length ? ` (${open.length})` : ""}</button>
+      <button class="tab ${view === "resolved" ? "active" : ""}" data-tab="resolved">Resolved</button>
+    </div>
+    <section class="grid cards">
+      ${list.length ? list.map(renderPost).join("") : `<div class="card empty">${view === "open" ? "Nothing reported right now." : "No resolved posts yet."}</div>`}
+    </section>
+  `;
+}
+
+// ── events ───────────────────────────────────────────────────────────────────
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.hasAttribute("data-kind")) {
+    draftKind = t.getAttribute("data-kind");
+    [...document.querySelectorAll("#kind-seg button")].forEach(b => b.classList.toggle("active", b === t));
+    return;
+  }
+  if (t.hasAttribute("data-close")) { closeModal(); return; }
+  if (t.hasAttribute("data-add")) { openPostModal(); return; }
+  if (t.hasAttribute("data-tab")) { view = t.getAttribute("data-tab"); clearMessages(); render(); return; }
+  if (t.hasAttribute("data-resolve")) { resolvePost(t.getAttribute("data-resolve")); return; }
+  if (t.hasAttribute("data-delete")) { deletePost(t.getAttribute("data-delete")); return; }
+  if (t.hasAttribute("data-match")) { confirmMatch(t.getAttribute("data-match"), t.getAttribute("data-with")); return; }
+});
+
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "post-form") return;
+  e.preventDefault();
+  const btn = e.target.querySelector(".modal-actions .btn:not(.btn-ghost)");
+  const val = (id) => document.getElementById(id)?.value ?? "";
+  const title = val("f-title").trim();
+  if (!title) { document.getElementById("f-title")?.focus(); return; }
+  if (btn) { btn.disabled = true; btn.textContent = "Posting…"; }
+  try {
+    let fileId = "";
+    const fileInput = document.getElementById("f-photo");
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      const up = await files.upload(fileInput.files[0]);
+      fileId = up.id;
+    }
+    await createPost({ title, category: val("f-category"), description: val("f-description"), location: val("f-location") }, fileId);
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = "Post"; }
+    showError(err.message || "Couldn't post. Check the photo type/size and try again.");
+  }
+});
+
+refresh();
+</script>
+</body>
+</html>
