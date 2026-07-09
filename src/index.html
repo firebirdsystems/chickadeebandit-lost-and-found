@@ -82,15 +82,15 @@
 
 <script type="module">
 import { esc, isAdult, hubConfirm, createFilesHelper } from "/hub-sdk.js";
+import {
+  CATEGORIES, CAT_LABEL, fmtDate, canManage as canManageOf, matchesFor as matchesForOf,
+} from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB = window.__DB_URL ?? "";
 const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
 const FILES = window.__FILES_URL ?? "";
 const files = createFilesHelper(FILES);
-
-const CATEGORIES = ["pet", "keys", "package", "bike", "wallet", "other"];
-const CAT_LABEL = { pet: "Pet", keys: "Keys", package: "Package", bike: "Bike", wallet: "Wallet", other: "Other" };
 
 let members = [];
 let currentMember = null;
@@ -103,7 +103,6 @@ let modalEl = null;
 
 function nowIso() { return new Date().toISOString(); }
 function uid() { return crypto.randomUUID(); }
-function fmtDate(v) { if (!v) return ""; return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(v)); }
 
 async function dbq(sql, params = []) {
   if (!DB) return { rows: [] };
@@ -149,31 +148,8 @@ function showNotice(m) { notice = m; error = ""; render(); }
 
 // Client gate mirrors the owner_or_visibility policy: the owner can always
 // write their own post; any adult can write any post.
-function canManage(post) { return !!currentMember && (post.reported_by_id === currentMember.id || isAdult(currentMember)); }
-
-const STOP = new Set(["the","a","an","of","and","near","by","my","our","lost","found","set","pair","some","at","in","on","to"]);
-function tokens(post) {
-  return new Set(`${post.title} ${post.description}`.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)));
-}
-// Suggest opposite-kind open posts that share a category or keywords.
-function matchesFor(post) {
-  if (post.status !== "open") return [];
-  const opp = post.kind === "lost" ? "found" : "lost";
-  const mine = tokens(post);
-  return posts
-    .filter(p => p.status === "open" && p.kind === opp)
-    .map(p => {
-      const theirs = tokens(p);
-      let overlap = 0;
-      for (const w of mine) if (theirs.has(w)) overlap++;
-      const score = (p.category === post.category ? 2 : 0) + overlap;
-      return { post: p, score };
-    })
-    .filter(x => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-    .map(x => x.post);
-}
+function canManage(post) { return canManageOf(post, currentMember); }
+function matchesFor(post) { return matchesForOf(post, posts); }
 
 // ── mutations ────────────────────────────────────────────────────────────────
 async function createPost(fields, fileId) {
