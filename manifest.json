@@ -9,6 +9,7 @@
   "category": "community",
   "tags": ["lost", "found", "hoa", "neighborhood", "community"],
   "storage": "db",
+  "contexts": ["household", "shared_space"],
   "data_access": {
     "reads": ["family.members"],
     "writes": []
