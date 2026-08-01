@@ -41,3 +41,13 @@ export function matchesFor(post, posts) {
     .slice(0, 3)
     .map(x => x.post);
 }
+
+/**
+ * Fields the in-app search matches against (see hub-sdk `searchMatch`).
+ * Location and description both count: a lost item is described from
+ * memory ("black wallet, near the tennis courts"), rarely by whatever
+ * title the person who found it happened to type.
+ */
+export function searchableFields(item) {
+  return [item.title, item.description, item.location, item.category, item.reported_by_name];
+}

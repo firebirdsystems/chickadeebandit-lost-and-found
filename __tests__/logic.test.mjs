@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CATEGORIES, CAT_LABEL, fmtDate, canManage, tokens, matchesFor } from "../src/logic.js";
+import { CATEGORIES, CAT_LABEL, fmtDate, canManage, tokens, matchesFor, searchableFields } from "../src/logic.js";
 
 describe("fmtDate", () => {
   it("empty for falsy, formatted otherwise", () => {
@@ -54,5 +54,16 @@ describe("matchesFor", () => {
 describe("constants", () => {
   it("labels every category", () => {
     for (const c of CATEGORIES) expect(CAT_LABEL[c]).toBeTruthy();
+  });
+});
+
+describe("searchableFields", () => {
+  it("matches on where a thing was lost and how it was described", () => {
+    const fields = searchableFields({
+      title: "Wallet", description: "black leather, cards inside",
+      location: "by the tennis courts", category: "wallet", reported_by_name: "Sam",
+    });
+    expect(fields).toContain("by the tennis courts");
+    expect(fields).toContain("black leather, cards inside");
   });
 });

@@ -72,6 +72,13 @@
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
     .grid.two { display: grid; gap: 10px; }
     @media (min-width: 520px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+    .search-row { margin-bottom: 12px; }
+    .search-input {
+      width: 100%; border: 1.5px solid var(--border-mid, var(--border, #d1d5db));
+      border-radius: 8px; padding: 9px 11px; font: inherit;
+      background: var(--surface, var(--card, #fff)); color: var(--text, inherit);
+    }
+    .search-input:focus { outline: none; border-color: var(--accent, #6366f1); }
   </style>
   <base href="/run/lost-and-found/">
 </head>
@@ -81,9 +88,9 @@
 </div>
 
 <script type="module">
-import { esc, isAdult, hubConfirm, createFilesHelper } from "/hub-sdk.js";
+import { esc, isAdult, hubConfirm, createFilesHelper, searchMatch } from "/hub-sdk.js";
 import {
-  CATEGORIES, CAT_LABEL, fmtDate, canManage as canManageOf, matchesFor as matchesForOf,
+  CATEGORIES, CAT_LABEL, fmtDate, canManage as canManageOf, matchesFor as matchesForOf, searchableFields,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -96,6 +103,7 @@ let members = [];
 let currentMember = null;
 let posts = [];
 let view = "open";       // 'open' | 'resolved'
+let searchQ = "";       // in-app search (see logic.js searchableFields)
 let draftKind = "lost";
 let error = "";
 let notice = "";
@@ -349,6 +357,16 @@ function renderPost(post) {
   `;
 }
 
+// Owns both the filtering and the empty states, so the keystroke handler can
+// refresh the list without repeating how the list is derived.
+function renderPostList() {
+  const list = posts.filter(p => p.status === view);
+  const shown = searchQ ? list.filter(p => searchMatch(searchQ, searchableFields(p))) : list;
+  if (shown.length) return shown.map(renderPost).join("");
+  if (searchQ) return `<div class="card empty">No posts match "${esc(searchQ)}".</div>`;
+  return `<div class="card empty">${view === "open" ? "Nothing reported right now." : "No resolved posts yet."}</div>`;
+}
+
 function render() {
   const root = document.getElementById("root");
   root.className = "app";
@@ -368,11 +386,20 @@ function render() {
       <button class="tab ${view === "open" ? "active" : ""}" data-tab="open">Open${open.length ? ` (${open.length})` : ""}</button>
       <button class="tab ${view === "resolved" ? "active" : ""}" data-tab="resolved">Resolved</button>
     </div>
-    <section class="grid cards">
-      ${list.length ? list.map(renderPost).join("") : `<div class="card empty">${view === "open" ? "Nothing reported right now." : "No resolved posts yet."}</div>`}
+    ${list.length ? `<div class="search-row"><input id="search" class="search-input" type="search" placeholder="Search lost &amp; found…" aria-label="Search lost &amp; found" value="${esc(searchQ)}" /></div>` : ""}
+    <section class="grid cards" id="post-list">
+      ${renderPostList()}
     </section>
   `;
 }
+
+// Re-render only the list on each keystroke so the search box keeps focus.
+document.addEventListener("input", (e) => {
+  if (e.target.id !== "search") return;
+  searchQ = e.target.value;
+  const el = document.getElementById("post-list");
+  if (el) el.innerHTML = renderPostList();
+});
 
 // ── events ───────────────────────────────────────────────────────────────────
 document.addEventListener("click", (e) => {
