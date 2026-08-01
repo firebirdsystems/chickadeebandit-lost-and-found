@@ -112,6 +112,24 @@ async function dbq(sql, params = []) {
   return json;
 }
 
+// Atomic multi-statement form of /api/db. Closing a matched pair writes BOTH
+// posts; issued one at a time, a failure on the second left post A resolved and
+// pointing at B while B stayed open and unlinked — a half-closed match the UI
+// has no way to repair. D1 runs a batch transactionally, so it lands whole or
+// not at all. Throws on rejection so the caller never treats a refused batch as
+// applied.
+async function dbBatch(statements) {
+  if (!DB || !statements.length) return [];
+  const res = await fetch(DB, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ statements }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body?.error ?? `batch failed (${res.status})`);
+  return body.results ?? [];
+}
+
 async function loadMembers() {
   if (!CONTEXT) {
     members = [{ id: "demo-1", name: "Alex", role: "adult" }, { id: "demo-2", name: "Jordan", role: "adult" }];
@@ -132,7 +150,10 @@ function seedDemo() {
 
 async function loadPosts() {
   if (!DB) { seedDemo(); return; }
-  const rows = await dbq("SELECT * FROM app_lost_and_found__posts ORDER BY created_at DESC");
+  // Bounded read: resolved posts now expire after a year (retain_days, with open
+  // posts exempt), but the board is a community surface and an unbounded SELECT
+  // would grow with it regardless.
+  const rows = await dbq("SELECT * FROM app_lost_and_found__posts ORDER BY created_at DESC LIMIT 500");
   posts = rows.rows;
 }
 
@@ -201,8 +222,11 @@ async function confirmMatch(postId, matchId) {
   const now = nowIso();
   try {
     if (DB) {
-      await dbq(`UPDATE app_lost_and_found__posts SET status='resolved', matched_post_id=?, resolved_at=? WHERE id=?`, [matchId, now, postId]);
-      await dbq(`UPDATE app_lost_and_found__posts SET status='resolved', matched_post_id=?, resolved_at=? WHERE id=?`, [postId, now, matchId]);
+      const sql = `UPDATE app_lost_and_found__posts SET status='resolved', matched_post_id=?, resolved_at=? WHERE id=?`;
+      await dbBatch([
+        { sql, params: [matchId, now, postId] },
+        { sql, params: [postId, now, matchId] },
+      ]);
     }
     patchPost(postId, { status: "resolved", matched_post_id: matchId, resolved_at: now });
     patchPost(matchId, { status: "resolved", matched_post_id: postId, resolved_at: now });
@@ -216,8 +240,13 @@ async function deletePost(id) {
   const ok = await hubConfirm({ message: `Delete “${post.title}”?`, confirmLabel: "Delete", destructive: true });
   if (!ok) return;
   try {
+    // The photo goes with the row: `manifest.delete_file_columns` has the hub
+    // read `photo_file_id` off the doomed row and queue the R2 reclaim in the
+    // same transaction. The trailing `files.delete(...).catch()` this replaces
+    // ran only if the tab survived the round trip, and once the row was gone
+    // nothing named the orphaned bytes. Retention already reclaimed this column
+    // on the expiry path; the delete path was the gap.
     if (DB) await dbq(`DELETE FROM app_lost_and_found__posts WHERE id=?`, [id]);
-    if (post.photo_file_id) files.delete(post.photo_file_id).catch(() => {});
     posts = posts.filter(p => p.id !== id);
     showNotice("Deleted.");
   } catch (e) { showError(e.message); }

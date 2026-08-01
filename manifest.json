@@ -10,6 +10,7 @@
   "tags": ["lost", "found", "hoa", "neighborhood", "community"],
   "storage": "db",
   "contexts": ["household", "shared_space"],
+  "db_plaintext_columns": ["kind"],
   "data_access": {
     "reads": ["family.members"],
     "writes": []
@@ -23,7 +24,23 @@
       "kind": "owner_or_visibility",
       "member_column": "reported_by_id",
       "visibility_column": "visibility",
-      "everyone_values": ["everyone"]
+      "everyone_values": ["everyone"],
+      "retain_days": {
+        "default": 365,
+        "timestamp_column": "created_at",
+        "override_key": "post_history",
+        "file_id_column": "photo_file_id",
+        "exempt_when": { "column": "status", "values": ["open"] }
+      }
+    }
+  },
+  "delete_file_columns": {
+    "posts": ["photo_file_id"]
+  },
+  "member_references": {
+    "posts": {
+      "column": "reported_by_id",
+      "on_removed": "keep"
     }
   },
   "nav": { "label": "Lost & Found" },
