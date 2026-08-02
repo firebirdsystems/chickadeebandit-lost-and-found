@@ -96,6 +96,22 @@ import {
 const CONTEXT = window.__CONTEXT_URL ?? "";
 const DB = window.__DB_URL ?? "";
 const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
+
+const EVENTS = window.__EVENTS_URL ?? "";
+
+async function publishEvent(type, subjectId, payload = {}) {
+  if (!EVENTS) return;
+  try {
+    await fetch(EVENTS, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, subject_id: subjectId, payload }),
+    });
+  } catch {
+    // Best-effort: the row is already written, so a failed publish is not fatal.
+  }
+}
+
 const FILES = window.__FILES_URL ?? "";
 const files = createFilesHelper(FILES);
 
@@ -199,6 +215,12 @@ async function createPost(fields, fileId) {
         [row.id, row.kind, row.title, row.category, row.description, row.location, row.photo_file_id, row.reported_by_id, row.reported_by_name, row.created_at]
       );
     }
+    await publishEvent("lost_and_found.post_created", row.id, {
+      kind: row.kind,
+      category: row.category,
+      location: row.location,
+      reported_by_id: row.reported_by_id,
+    });
     posts = [row, ...posts];
     closeModal();
     showNotice(`Posted ${draftKind === "lost" ? "a lost" : "a found"} item.`);
@@ -214,6 +236,11 @@ async function resolvePost(id) {
   try {
     if (DB) await dbq(`UPDATE app_lost_and_found__posts SET status='resolved', resolved_at=? WHERE id=?`, [now, id]);
     patchPost(id, { status: "resolved", resolved_at: now });
+    await publishEvent("lost_and_found.post_resolved", id, {
+      kind: post.kind,
+      category: post.category,
+      resolved_at: now,
+    });
     showNotice("Marked resolved.");
   } catch (e) { showError(e.message); }
 }

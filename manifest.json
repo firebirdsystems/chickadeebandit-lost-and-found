@@ -9,6 +9,55 @@
   "category": "community",
   "tags": ["lost", "found", "hoa", "neighborhood", "community"],
   "storage": "db",
+  "automation_actions": {
+    "report_item": {
+      "title": "Post a lost or found item",
+      "description": "Open a lost-and-found post when another app's event fires - something handed in at the front desk, or reported missing through another channel.",
+      "params": {
+        "reported_by_id": {
+          "type": "member",
+          "label": "Reported by",
+          "required": true
+        },
+        "title": {
+          "type": "text",
+          "label": "What it is",
+          "required": true
+        },
+        "kind": {
+          "type": "text",
+          "label": "Lost or found",
+          "default": "found",
+          "options": ["lost", "found"]
+        },
+        "location": {
+          "type": "text",
+          "label": "Where",
+          "default": ""
+        }
+      },
+      "dedupe": {
+        "table": "posts",
+        "column": "source_event_id"
+      },
+      "steps": [
+        {
+          "op": "insert",
+          "table": "posts",
+          "values": {
+            "id": "$uuid",
+            "title": ":title",
+            "kind": ":kind",
+            "location": ":location",
+            "reported_by_id": ":reported_by_id",
+            "reported_by_name": "Automation",
+            "created_at": "$now",
+            "source_event_id": "$event_id"
+          }
+        }
+      ]
+    }
+  },
   "contexts": ["household", "shared_space"],
   "db_plaintext_columns": ["kind"],
   "data_access": {
@@ -43,6 +92,8 @@
       "on_removed": "keep"
     }
   },
+  "publishes": ["lost_and_found.post_created", "lost_and_found.post_resolved"],
+  "publish_acls": {"lost_and_found.post_created": {"require_role": "member"}, "lost_and_found.post_resolved": {"require_role": "adult"}},
   "nav": { "label": "Lost & Found" },
   "glance": {
     "source": {
