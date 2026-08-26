@@ -9,6 +9,9 @@
   "category": "community",
   "tags": ["lost", "found", "hoa", "neighborhood", "community"],
   "storage": "db",
+  "preload": {
+    "posts": {"sql": "SELECT * FROM app_lost_and_found__posts ORDER BY created_at DESC LIMIT 500"}
+  },
   "automation_actions": {
     "report_item": {
       "title": "Post a lost or found item",
