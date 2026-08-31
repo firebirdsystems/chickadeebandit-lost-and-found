@@ -354,7 +354,7 @@ function renderPost(post) {
   const matches = matchesFor(post);
   const photo = post.photo_file_id && FILES ? `<img class="post-photo" src="${esc(files.url(post.photo_file_id))}" alt="${esc(post.title)}" />` : "";
   return `
-    <article class="card">
+    <article class="card" data-testid="post-card" data-post-id="${esc(post.id)}">
       ${photo}
       <div class="post-head">
         <div>
@@ -366,17 +366,17 @@ function renderPost(post) {
       ${post.description ? `<div class="post-desc">${esc(post.description)}</div>` : ""}
       ${post.status === "resolved" ? `<div class="post-meta" style="margin-top:8px;"><span class="pill">Resolved${post.resolved_at ? ` · ${esc(fmtDate(post.resolved_at))}` : ""}</span></div>` : ""}
       ${matches.length ? `
-        <div class="match">
+        <div class="match" data-testid="match-block" data-post-id="${esc(post.id)}">
           <div class="tiny muted" style="font-weight:800;margin-bottom:6px;">Possible ${post.kind === "lost" ? "found" : "lost"} match${matches.length > 1 ? "es" : ""}</div>
           ${matches.map(m => `
             <div class="match-row">
               <span>${esc(m.title)} <span class="muted tiny">· ${esc(m.reported_by_name)}</span></span>
-              ${isAdult(currentMember) ? `<button class="btn btn-sm" data-match="${esc(post.id)}" data-with="${esc(m.id)}">Same item</button>` : `<span class="pill info">match?</span>`}
+              ${isAdult(currentMember) ? `<button class="btn btn-sm" data-testid="match-confirm" data-post-id="${esc(post.id)}" data-match-id="${esc(m.id)}" data-match="${esc(post.id)}" data-with="${esc(m.id)}">Same item</button>` : `<span class="pill info" data-testid="match-pill" data-post-id="${esc(post.id)}" data-match-id="${esc(m.id)}">match?</span>`}
             </div>
           `).join("")}
         </div>` : ""}
       ${post.status === "open" && canManage(post) ? `
-        <div class="row-actions">
+        <div class="row-actions" data-testid="post-actions" data-post-id="${esc(post.id)}">
           <button class="btn btn-ghost btn-sm" data-resolve="${esc(post.id)}">Mark resolved</button>
           <button class="btn btn-danger btn-sm" data-delete="${esc(post.id)}">Delete</button>
         </div>` : ""}
@@ -414,7 +414,7 @@ function render() {
       <button class="tab ${view === "resolved" ? "active" : ""}" data-tab="resolved">Resolved</button>
     </div>
     ${list.length ? `<div class="search-row"><input id="search" class="search-input" type="search" placeholder="Search lost &amp; found…" aria-label="Search lost &amp; found" value="${esc(searchQ)}" /></div>` : ""}
-    <section class="grid cards" id="post-list">
+    <section class="grid cards" id="post-list" data-testid="post-list">
       ${renderPostList()}
     </section>
   `;

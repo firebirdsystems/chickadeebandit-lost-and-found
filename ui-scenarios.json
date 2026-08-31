@@ -1,0 +1,50 @@
+{
+  "scenarios": [
+    {
+      "name": "manage controls render only on the viewer's own post",
+      "members": { "kid": "child", "other": "child" },
+      "steps": [
+        { "action": "seedRaw",
+          "sql": "INSERT INTO app_lost_and_found__posts (id, kind, title, category, visibility, status, reported_by_id, reported_by_name, created_at) VALUES ('lf-kid-post', 'lost', ?, 'wallet', 'everyone', 'open', ?, ?, '2026-08-01T09:00:00Z')",
+          "params": ["Blue backpack", "{{kid}}", "Kid Reporter"] },
+        { "action": "seedRaw",
+          "sql": "INSERT INTO app_lost_and_found__posts (id, kind, title, category, visibility, status, reported_by_id, reported_by_name, created_at) VALUES ('lf-other-post', 'lost', ?, 'bike', 'everyone', 'open', ?, ?, '2026-08-01T10:00:00Z')",
+          "params": ["Silver scooter", "{{other}}", "Other Reporter"] },
+
+        { "action": "open", "as": "kid" },
+        { "action": "expectVisible", "as": "kid", "selector": "[data-testid=\"post-card\"][data-post-id=\"lf-other-post\"]" },
+        { "action": "expectVisible", "as": "kid", "selector": "[data-testid=\"post-card\"][data-post-id=\"lf-kid-post\"]" },
+        { "action": "expectText", "as": "kid", "text": "Silver scooter" },
+        { "action": "expectCount", "as": "kid", "selector": "[data-testid=\"post-actions\"][data-post-id=\"lf-kid-post\"]", "count": 1 },
+        { "action": "expectCount", "as": "kid", "selector": "[data-testid=\"post-actions\"][data-post-id=\"lf-other-post\"]", "count": 0 },
+
+        { "action": "open", "as": "other" },
+        { "action": "expectVisible", "as": "other", "selector": "[data-testid=\"post-actions\"][data-post-id=\"lf-other-post\"]" },
+        { "action": "expectCount", "as": "other", "selector": "[data-testid=\"post-actions\"][data-post-id=\"lf-other-post\"]", "count": 1 },
+        { "action": "expectCount", "as": "other", "selector": "[data-testid=\"post-actions\"][data-post-id=\"lf-kid-post\"]", "count": 0 }
+      ]
+    },
+    {
+      "name": "closing a matched pair is offered to an adult and withheld from a child",
+      "members": { "organizer": "admin", "kid": "child" },
+      "steps": [
+        { "action": "seedRaw",
+          "sql": "INSERT INTO app_lost_and_found__posts (id, kind, title, category, visibility, status, reported_by_id, reported_by_name, created_at) VALUES ('lf-lost', 'lost', ?, 'keys', 'everyone', 'open', ?, ?, '2026-08-02T09:00:00Z')",
+          "params": ["Toyota keys on a red lanyard", "{{kid}}", "Kid Reporter"] },
+        { "action": "seedRaw",
+          "sql": "INSERT INTO app_lost_and_found__posts (id, kind, title, category, visibility, status, reported_by_id, reported_by_name, created_at) VALUES ('lf-found', 'found', ?, 'keys', 'everyone', 'open', ?, ?, '2026-08-02T10:00:00Z')",
+          "params": ["Set of keys by the pool deck", "{{organizer}}", "Organizer"] },
+
+        { "action": "open", "as": "kid" },
+        { "action": "expectVisible", "as": "kid", "selector": "[data-testid=\"match-block\"][data-post-id=\"lf-lost\"]" },
+        { "action": "expectCount", "as": "kid", "selector": "[data-testid=\"match-confirm\"]", "count": 0 },
+        { "action": "expectVisible", "as": "kid", "selector": "[data-testid=\"match-pill\"][data-post-id=\"lf-lost\"][data-match-id=\"lf-found\"]" },
+
+        { "action": "open", "as": "organizer" },
+        { "action": "expectVisible", "as": "organizer", "selector": "[data-testid=\"match-confirm\"][data-post-id=\"lf-lost\"][data-match-id=\"lf-found\"]" },
+        { "action": "expectCount", "as": "organizer", "selector": "[data-testid=\"match-confirm\"]", "count": 2 },
+        { "action": "expectCount", "as": "organizer", "selector": "[data-testid=\"match-pill\"]", "count": 0 }
+      ]
+    }
+  ]
+}
