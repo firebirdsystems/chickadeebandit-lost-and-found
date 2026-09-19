@@ -17,10 +17,10 @@
       --accent-hover: var(--hub-primary-hover, #0b5b54);
       --accent-fg: var(--hub-primary-fg, #ffffff);
       --radius: var(--hub-radius, 8px);
-      --green: #047857; --green-soft: #d1fae5;
-      --amber: #b45309; --amber-soft: #fef3c7;
-      --red: #b91c1c; --red-soft: #fee2e2;
-      --blue-soft: #dbeafe;
+      --green: var(--hub-tint-success-fg, #047857); --green-soft: var(--hub-tint-success, #d1fae5);
+      --amber: var(--hub-tint-warning-fg, #b45309); --amber-soft: var(--hub-tint-warning, #fef3c7);
+      --red: var(--hub-tint-danger-fg, #b91c1c); --red-soft: var(--hub-tint-danger, #fee2e2);
+      --blue-soft: var(--hub-tint-info, #dbeafe);
       --shadow: 0 1px 3px rgba(15, 23, 42, .07);
     }
     body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--hub-font, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif); font-size: var(--hub-font-size, 15px); line-height: 1.5; }
@@ -32,15 +32,15 @@
     .grid { display: grid; gap: 12px; }
     @media (min-width: 640px) { .grid.cards { grid-template-columns: 1fr 1fr; } }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
-    .post-photo { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: #f1f5f9; }
+    .post-photo { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: var(--bg); }
     .post-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .post-title { font-weight: 750; font-size: 1.02rem; }
     .post-meta { margin-top: 3px; color: var(--muted); font-size: .82rem; }
     .post-desc { margin-top: 8px; font-size: .92rem; }
-    .pill { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 9px; border-radius: 999px; background: #f1f5f9; color: var(--muted); font-size: .72rem; font-weight: 800; }
+    .pill { display: inline-flex; align-items: center; min-height: 22px; padding: 2px 9px; border-radius: 999px; background: var(--bg); color: var(--muted); font-size: .72rem; font-weight: 800; }
     .pill.lost { background: var(--red-soft); color: var(--red); }
     .pill.found { background: var(--green-soft); color: var(--green); }
-    .pill.info { background: var(--blue-soft); color: #1d4ed8; }
+    .pill.info { background: var(--blue-soft); color: var(--hub-tint-info-fg, #1d4ed8); }
     .pill.warn { background: var(--amber-soft); color: var(--amber); }
     .match { margin-top: 10px; border-top: 1px dashed var(--border-mid); padding-top: 10px; }
     .match-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .85rem; }
@@ -51,7 +51,7 @@
     .btn:hover { background: var(--accent-hover); }
     .btn:disabled { opacity: .48; cursor: default; }
     .btn-ghost { background: transparent; color: var(--text); border-color: var(--border-mid); }
-    .btn-ghost:hover { background: #f8fafc; }
+    .btn-ghost:hover { background: var(--bg); }
     .btn-danger { background: var(--red-soft); color: var(--red); border-color: transparent; }
     .btn-sm { min-height: 30px; padding: 4px 9px; font-size: .77rem; }
     .row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
@@ -63,7 +63,7 @@
     input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
     .seg { display: flex; gap: 6px; }
     .seg button { flex: 1; border: 1.5px solid var(--border-mid); background: var(--surface); border-radius: 8px; padding: 9px; font-weight: 700; cursor: pointer; color: var(--text); }
-    .seg button.active { border-color: var(--accent); color: var(--accent); background: #ecfeff; }
+    .seg button.active { border-color: var(--accent); color: var(--accent); background: var(--hub-tint-info, #ecfeff); }
     .empty, .loading { color: var(--muted); text-align: center; padding: 32px 16px; }
     .error { background: var(--red-soft); color: var(--red); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
     .notice { background: var(--green-soft); color: var(--green); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
