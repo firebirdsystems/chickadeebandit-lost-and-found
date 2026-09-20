@@ -1,5 +1,7 @@
 # Lost & Found
 
+A [Chickadee Bandit](https://chickadeebandit.com/app-library/lost-and-found) app.
+
 Post lost or found items — pets, keys, packages, bikes — with a photo and
 last-known location. The app surfaces likely matches between open **lost** and
 **found** posts (by category + shared keywords) and closes both out once an
