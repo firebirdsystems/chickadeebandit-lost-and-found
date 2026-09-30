@@ -103,6 +103,51 @@
           "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "p-open", "kind": "lost", "title": "Cat" }] }
         }
       ]
+    },
+    {
+      "name": "in a shared space only the steward can close out another member's post; a participant adult cannot",
+      "context": "shared_space",
+      "members": { "a": "adult", "b": "adult", "steward": "admin" },
+      "steps": [
+        {
+          "action": "seedRaw",
+          "sql": "INSERT INTO app_lost_and_found__posts (id, kind, title, visibility, status, reported_by_id, reported_by_name, created_at) VALUES (?, 'lost', ?, 'everyone', 'open', ?, ?, ?)",
+          "params": ["p-b", "Blue bike", "{{b}}", "B", "2026-01-01T00:00:00Z"]
+        },
+        {
+          "action": "db",
+          "as": "a",
+          "sql": "SELECT id FROM app_lost_and_found__posts",
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "id": "p-b" }] }
+        },
+        {
+          "action": "db",
+          "as": "a",
+          "sql": "UPDATE app_lost_and_found__posts SET status = 'resolved', resolved_at = ? WHERE id = ?",
+          "params": ["2026-01-02T00:00:00Z", "p-b"]
+        },
+        {
+          "action": "db",
+          "as": "b",
+          "sql": "SELECT status FROM app_lost_and_found__posts WHERE id = ?",
+          "params": ["p-b"],
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "status": "open" }] }
+        },
+        {
+          "action": "db",
+          "as": "steward",
+          "sql": "UPDATE app_lost_and_found__posts SET status = 'resolved', resolved_at = ? WHERE id = ?",
+          "params": ["2026-01-03T00:00:00Z", "p-b"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "b",
+          "sql": "SELECT status FROM app_lost_and_found__posts WHERE id = ?",
+          "params": ["p-b"],
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "status": "resolved" }] }
+        }
+      ]
     }
   ]
 }
