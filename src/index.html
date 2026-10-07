@@ -88,7 +88,7 @@
 </div>
 
 <script type="module">
-import { esc, isAdult, hubConfirm, createFilesHelper, searchMatch } from "/hub-sdk.js";
+import { esc, isAdult, hubConfirm, createFilesHelper, searchMatch, glyph } from "/hub-sdk.js";
 import {
   CATEGORIES, CAT_LABEL, fmtDate, canManage as canManageOf, matchesFor as matchesForOf, searchableFields,
 } from "./logic.js";
@@ -403,7 +403,7 @@ function render() {
   root.innerHTML = `
     <div class="topbar">
       <div>
-        <h1>🔎 Lost &amp; Found</h1>
+        <h1>${glyph("magnifier")} Lost &amp; Found</h1>
         <p class="muted tiny">${open.length} open · report anything lost or found nearby</p>
       </div>
       <button class="btn" data-add>Post item</button>
