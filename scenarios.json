@@ -50,6 +50,80 @@
       ]
     },
     {
+      "name": "the reporter or an adult keeps a cutout of a post's photo and can put the background back; another child cannot",
+      "members": { "adult": "adult", "kid": "child", "friend": "child" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "INSERT INTO app_lost_and_found__posts (id, kind, title, photo_file_id, visibility, status, reported_by_id, reported_by_name, created_at) VALUES ('p1', 'found', 'Red scarf', 'photo-1', 'everyone', 'open', ?, 'Kid', '2026-01-01T00:00:00Z')",
+          "params": ["{{kid}}"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "friend",
+          "sql": "UPDATE app_lost_and_found__posts SET cutout_file_id=?, cutout_thumb_file_id=? WHERE id=? AND photo_file_id=?",
+          "params": ["cut-0", "small-1", "p1", "photo-1"]
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "SELECT photo_file_id, cutout_file_id FROM app_lost_and_found__posts WHERE id = ?",
+          "params": ["p1"],
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "photo_file_id": "photo-1", "cutout_file_id": null }] }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "UPDATE app_lost_and_found__posts SET cutout_file_id=?, cutout_thumb_file_id=? WHERE id=? AND photo_file_id=?",
+          "params": ["cut-1", "small-1", "p1", "photo-1"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "UPDATE app_lost_and_found__posts SET cutout_file_id=?, cutout_thumb_file_id=? WHERE id=? AND photo_file_id=?",
+          "params": ["cut-2", "small-1", "p1", "a-photo-since-replaced"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "friend",
+          "sql": "SELECT photo_file_id, cutout_file_id FROM app_lost_and_found__posts WHERE id = ?",
+          "params": ["p1"],
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "photo_file_id": "photo-1", "cutout_file_id": "cut-1" }] }
+        },
+        {
+          "action": "db",
+          "as": "friend",
+          "sql": "UPDATE app_lost_and_found__posts SET cutout_file_id=NULL, cutout_thumb_file_id=NULL WHERE id=?",
+          "params": ["p1"]
+        },
+        {
+          "action": "db",
+          "as": "adult",
+          "sql": "SELECT photo_file_id, cutout_file_id FROM app_lost_and_found__posts WHERE id = ?",
+          "params": ["p1"],
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "photo_file_id": "photo-1", "cutout_file_id": "cut-1" }] }
+        },
+        {
+          "action": "db",
+          "as": "adult",
+          "sql": "UPDATE app_lost_and_found__posts SET cutout_file_id=NULL, cutout_thumb_file_id=NULL WHERE id=?",
+          "params": ["p1"],
+          "expect": { "status": 200 }
+        },
+        {
+          "action": "db",
+          "as": "kid",
+          "sql": "SELECT photo_file_id, cutout_file_id FROM app_lost_and_found__posts WHERE id = ?",
+          "params": ["p1"],
+          "expect": { "status": 200, "rowCount": 1, "rowsContain": [{ "photo_file_id": "photo-1", "cutout_file_id": null }] }
+        }
+      ]
+    },
+    {
       "name": "a post is always attributed to its author, and a non-public post is hidden from others",
       "members": { "author": "adult", "other": "adult" },
       "steps": [

@@ -86,8 +86,12 @@
       }
     }
   },
+  "required_capabilities": ["image_cutout"],
   "delete_file_columns": {
-    "posts": ["photo_file_id"]
+    "posts": ["photo_file_id", "thumb_file_id", "cutout_file_id", "cutout_thumb_file_id"]
+  },
+  "update_file_columns": {
+    "posts": ["photo_file_id", "thumb_file_id", "cutout_file_id", "cutout_thumb_file_id"]
   },
   "member_references": {
     "posts": {

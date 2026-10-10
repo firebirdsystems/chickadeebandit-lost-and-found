@@ -33,6 +33,9 @@
     @media (min-width: 640px) { .grid.cards { grid-template-columns: 1fr 1fr; } }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
     .post-photo { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 10px; background: var(--bg); }
+    /* A cutout is transparent and drawn whole, never cropped to fill. */
+    .post-photo.cutout { object-fit: contain; }
+    .post-photo-link { display: block; }
     .post-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .post-title { font-weight: 750; font-size: 1.02rem; }
     .post-meta { margin-top: 3px; color: var(--muted); font-size: .82rem; }
@@ -88,9 +91,10 @@
 </div>
 
 <script type="module">
-import { esc, isAdult, hubConfirm, createFilesHelper, searchMatch, glyph } from "/hub-sdk.js";
+import { esc, hubConfirm, createFilesHelper, searchMatch, glyph } from "/hub-sdk.js";
 import {
   CATEGORIES, CAT_LABEL, fmtDate, canManage as canManageOf, matchesFor as matchesForOf, searchableFields,
+  tilePhotoId, cutoutRefusal,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -124,6 +128,8 @@ let draftKind = "lost";
 let error = "";
 let notice = "";
 let modalEl = null;
+// The post whose photo is having its background removed or put back, if any.
+let cutoutBusy = "";
 
 function nowIso() { return new Date().toISOString(); }
 function uid() { return crypto.randomUUID(); }
@@ -192,27 +198,29 @@ function showError(m) { error = m; notice = ""; render(); }
 function showNotice(m) { notice = m; error = ""; render(); }
 
 // Client gate mirrors the owner_or_visibility policy: the owner can always
-// write their own post; any adult can write any post.
-function canManage(post) { return canManageOf(post, currentMember); }
+// write their own post; so can any adult in a household, and only the steward
+// in a shared space.
+const TENANT = { tenantKind: window.__TENANT_KIND ?? "household", isAdmin: window.__IS_ADMIN === true };
+function canManage(post) { return canManageOf(post, currentMember, TENANT); }
 function matchesFor(post) { return matchesForOf(post, posts); }
 
 // ── mutations ────────────────────────────────────────────────────────────────
-async function createPost(fields, fileId) {
+async function createPost(fields, fileId, thumbId = null) {
   const title = fields.title.trim();
   if (!title) return showError("Give the item a short title.");
   const row = {
     id: uid(), kind: draftKind, title, category: fields.category,
     description: fields.description.trim(), location: fields.location.trim(),
-    photo_file_id: fileId || "", visibility: "everyone", status: "open", matched_post_id: "",
+    photo_file_id: fileId || "", thumb_file_id: thumbId, visibility: "everyone", status: "open", matched_post_id: "",
     reported_by_id: currentMember.id, reported_by_name: currentMember.name,
     created_at: nowIso(), resolved_at: null,
   };
   try {
     if (DB) {
       await dbq(
-        `INSERT INTO app_lost_and_found__posts (id, kind, title, category, description, location, photo_file_id, visibility, status, matched_post_id, reported_by_id, reported_by_name, created_at, resolved_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'everyone', 'open', '', ?, ?, ?, NULL)`,
-        [row.id, row.kind, row.title, row.category, row.description, row.location, row.photo_file_id, row.reported_by_id, row.reported_by_name, row.created_at]
+        `INSERT INTO app_lost_and_found__posts (id, kind, title, category, description, location, photo_file_id, thumb_file_id, visibility, status, matched_post_id, reported_by_id, reported_by_name, created_at, resolved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'everyone', 'open', '', ?, ?, ?, NULL)`,
+        [row.id, row.kind, row.title, row.category, row.description, row.location, row.photo_file_id, row.thumb_file_id, row.reported_by_id, row.reported_by_name, row.created_at]
       );
     }
     await publishEvent("lost_and_found.post_created", row.id, {
@@ -249,9 +257,9 @@ async function confirmMatch(postId, matchId) {
   const a = posts.find(p => p.id === postId);
   const b = posts.find(p => p.id === matchId);
   if (!a || !b) return;
-  // Closing both posts writes another member's row, which the owner_or_visibility
-  // policy only allows for adults — mirror that in the gate.
-  if (!isAdult(currentMember)) return showError("Only an adult/leadership member can close a matched pair.");
+  // Closing a pair writes both rows in one batch, so whoever does it must be
+  // allowed to write each of them.
+  if (!canManage(a) || !canManage(b)) return showError("Only an adult/leadership member can close a matched pair.");
   const ok = await hubConfirm({ message: `Close both “${a.title}” and “${b.title}” as claimed?`, description: "Both posts will be marked resolved and linked.", confirmLabel: "Close both" });
   if (!ok) return;
   const now = nowIso();
@@ -285,6 +293,40 @@ async function deletePost(id) {
     posts = posts.filter(p => p.id !== id);
     showNotice("Deleted.");
   } catch (e) { showError(e.message); }
+}
+
+// ── photo background ─────────────────────────────────────────────────────────
+async function removeBackground(id) {
+  const post = posts.find(p => p.id === id);
+  if (!post?.photo_file_id || cutoutBusy) return;
+  if (!canManage(post)) return showError("You can't change this post's photo.");
+  const photoId = post.photo_file_id;
+  cutoutBusy = id; clearMessages(); render();
+  try {
+    // The hub also keeps a small copy of the cutout, which the card draws.
+    const cut = await files.cutout(photoId, { thumbnail: true });
+    const smallId = cut.thumbnailId ?? null;
+    // Kept only if the post still shows the photo it was made from. A cutout of
+    // a photo gone in the meantime is reclaimed by the hub with that photo.
+    const { changed } = await dbq("UPDATE app_lost_and_found__posts SET cutout_file_id=?, cutout_thumb_file_id=? WHERE id=? AND photo_file_id=?",
+      [cut.id, smallId, id, photoId]);
+    if (changed) patchPost(id, { cutout_file_id: cut.id, cutout_thumb_file_id: smallId });
+  } catch (e) { error = e.status ? cutoutRefusal(e.status, e.detail) : e.message; }
+  cutoutBusy = ""; render();
+}
+
+async function restoreBackground(id) {
+  const post = posts.find(p => p.id === id);
+  if (!post?.cutout_file_id || cutoutBusy) return;
+  if (!canManage(post)) return showError("You can't change this post's photo.");
+  cutoutBusy = id; clearMessages(); render();
+  try {
+    // The hub reclaims the cutout and its small copy once no row names them.
+    // The photo is untouched.
+    await dbq("UPDATE app_lost_and_found__posts SET cutout_file_id=NULL, cutout_thumb_file_id=NULL WHERE id=?", [id]);
+    patchPost(id, { cutout_file_id: null, cutout_thumb_file_id: null });
+  } catch (e) { error = e.message; }
+  cutoutBusy = ""; render();
 }
 
 function patchPost(id, patch) {
@@ -352,7 +394,9 @@ function renderMessages() { return `${error ? `<div class="error">${esc(error)}<
 
 function renderPost(post) {
   const matches = matchesFor(post);
-  const photo = post.photo_file_id && FILES ? `<img class="post-photo" src="${esc(files.url(post.photo_file_id))}" alt="${esc(post.title)}" />` : "";
+  // The card draws the small copy. The photo as taken is one tap away, for
+  // telling whether the thing in it is yours.
+  const photo = post.photo_file_id && FILES ? `<a class="post-photo-link" href="${esc(files.url(post.photo_file_id))}" target="_blank" rel="noopener" aria-label="Open the full photo of ${esc(post.title)}"><img class="post-photo${post.cutout_file_id ? " cutout" : ""}" src="${esc(files.url(tilePhotoId(post)))}" alt="${esc(post.title)}" loading="lazy" /></a>` : "";
   return `
     <article class="card" data-testid="post-card" data-post-id="${esc(post.id)}">
       ${photo}
@@ -371,13 +415,16 @@ function renderPost(post) {
           ${matches.map(m => `
             <div class="match-row">
               <span>${esc(m.title)} <span class="muted tiny">· ${esc(m.reported_by_name)}</span></span>
-              ${isAdult(currentMember) ? `<button class="btn btn-sm" data-testid="match-confirm" data-post-id="${esc(post.id)}" data-match-id="${esc(m.id)}" data-match="${esc(post.id)}" data-with="${esc(m.id)}">Same item</button>` : `<span class="pill info" data-testid="match-pill" data-post-id="${esc(post.id)}" data-match-id="${esc(m.id)}">match?</span>`}
+              ${canManage(post) && canManage(m) ? `<button class="btn btn-sm" data-testid="match-confirm" data-post-id="${esc(post.id)}" data-match-id="${esc(m.id)}" data-match="${esc(post.id)}" data-with="${esc(m.id)}">Same item</button>` : `<span class="pill info" data-testid="match-pill" data-post-id="${esc(post.id)}" data-match-id="${esc(m.id)}">match?</span>`}
             </div>
           `).join("")}
         </div>` : ""}
       ${post.status === "open" && canManage(post) ? `
         <div class="row-actions" data-testid="post-actions" data-post-id="${esc(post.id)}">
           <button class="btn btn-ghost btn-sm" data-resolve="${esc(post.id)}">Mark resolved</button>
+          ${post.photo_file_id && FILES ? (post.cutout_file_id
+            ? `<button class="btn btn-ghost btn-sm" data-restore-bg="${esc(post.id)}" ${cutoutBusy ? "disabled" : ""}>Show photo as taken</button>`
+            : `<button class="btn btn-ghost btn-sm" data-remove-bg="${esc(post.id)}" ${cutoutBusy ? "disabled" : ""}>${cutoutBusy === post.id ? "Removing background…" : "Remove background"}</button>`) : ""}
           <button class="btn btn-danger btn-sm" data-delete="${esc(post.id)}">Delete</button>
         </div>` : ""}
     </article>
@@ -441,6 +488,8 @@ document.addEventListener("click", (e) => {
   if (t.hasAttribute("data-add")) { openPostModal(); return; }
   if (t.hasAttribute("data-tab")) { view = t.getAttribute("data-tab"); clearMessages(); render(); return; }
   if (t.hasAttribute("data-resolve")) { resolvePost(t.getAttribute("data-resolve")); return; }
+  if (t.hasAttribute("data-remove-bg")) { removeBackground(t.getAttribute("data-remove-bg")); return; }
+  if (t.hasAttribute("data-restore-bg")) { restoreBackground(t.getAttribute("data-restore-bg")); return; }
   if (t.hasAttribute("data-delete")) { deletePost(t.getAttribute("data-delete")); return; }
   if (t.hasAttribute("data-match")) { confirmMatch(t.getAttribute("data-match"), t.getAttribute("data-with")); return; }
 });
@@ -454,13 +503,15 @@ document.addEventListener("submit", async (e) => {
   if (!title) { document.getElementById("f-title")?.focus(); return; }
   if (btn) { btn.disabled = true; btn.textContent = "Posting…"; }
   try {
-    let fileId = "";
+    let fileId = "", thumbId = null;
     const fileInput = document.getElementById("f-photo");
     if (fileInput && fileInput.files && fileInput.files[0]) {
-      const up = await files.upload(fileInput.files[0]);
+      // The hub keeps a small copy with the photo, which is what a card draws.
+      const up = await files.upload(fileInput.files[0], { thumbnail: true });
       fileId = up.id;
+      thumbId = up.thumbnailId ?? null;
     }
-    await createPost({ title, category: val("f-category"), description: val("f-description"), location: val("f-location") }, fileId);
+    await createPost({ title, category: val("f-category"), description: val("f-description"), location: val("f-location") }, fileId, thumbId);
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = "Post"; }
     showError(err.message || "Couldn't post. Check the photo type/size and try again.");
