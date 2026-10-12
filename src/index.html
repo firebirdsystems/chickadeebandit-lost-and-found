@@ -164,6 +164,11 @@ async function dbBatch(statements) {
   return body.results;
 }
 
+// A failed write shows one fixed line for the action. Only wording this app
+// wrote for the reader (marked `forUser` where it is thrown) is shown as is;
+// the hub's own error text goes to the console.
+function failText(e, line) { if (!e?.forUser) console.error(e); return e?.forUser ? e.message : line; }
+
 async function loadMembers() {
   if (!CONTEXT) {
     members = [{ id: "demo-1", name: "Alex", role: "adult" }, { id: "demo-2", name: "Jordan", role: "adult" }];
@@ -249,7 +254,7 @@ async function createPost(fields, fileId, thumbId = null) {
     posts = [row, ...posts];
     closeModal();
     showNotice(`Posted ${draftKind === "lost" ? "a lost" : "a found"} item.`);
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(failText(e, "Couldn’t post the item — try again.")); }
 }
 
 async function resolvePost(id) {
@@ -270,7 +275,7 @@ async function resolvePost(id) {
       resolved_at: now,
     });
     showNotice("Marked resolved.");
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(failText(e, "Couldn’t resolve the post — try again.")); }
 }
 
 async function confirmMatch(postId, matchId) {
@@ -298,7 +303,7 @@ async function confirmMatch(postId, matchId) {
     showNotice("Matched and closed both posts. 🎉");
   } catch (e) {
     if (e.status === 409) return writeMissed("These posts can no longer be closed together.");
-    showError(e.message);
+    showError(failText(e, "Couldn’t close the posts — try again."));
   }
 }
 
@@ -320,7 +325,7 @@ async function deletePost(id) {
     }
     posts = posts.filter(p => p.id !== id);
     showNotice("Deleted.");
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(failText(e, "Couldn’t delete the post — try again.")); }
 }
 
 // ── photo background ─────────────────────────────────────────────────────────
@@ -339,7 +344,7 @@ async function removeBackground(id) {
     const { changed } = await dbq("UPDATE app_lost_and_found__posts SET cutout_file_id=?, cutout_thumb_file_id=? WHERE id=? AND photo_file_id=?",
       [cut.id, smallId, id, photoId]);
     if (changed) patchPost(id, { cutout_file_id: cut.id, cutout_thumb_file_id: smallId });
-  } catch (e) { error = e.status ? cutoutRefusal(e.status, e.detail) : e.message; }
+  } catch (e) { error = e.status ? cutoutRefusal(e.status, e.detail) : failText(e, "Couldn’t remove the background — try again."); }
   cutoutBusy = ""; render();
 }
 
@@ -354,7 +359,7 @@ async function restoreBackground(id) {
     const { changed } = await dbq("UPDATE app_lost_and_found__posts SET cutout_file_id=NULL, cutout_thumb_file_id=NULL WHERE id=?", [id]);
     if (changed === 0) error = "This post’s photo can no longer be changed.";
     else patchPost(id, { cutout_file_id: null, cutout_thumb_file_id: null });
-  } catch (e) { error = e.message; }
+  } catch (e) { error = failText(e, "Couldn’t restore the photo — try again."); }
   cutoutBusy = ""; render();
 }
 
@@ -546,7 +551,10 @@ document.addEventListener("submit", async (e) => {
     await createPost({ title, category: val("f-category"), description: val("f-description"), location: val("f-location") }, fileId, thumbId);
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = "Post"; }
-    showError(err.message || "Couldn't post. Check the photo type/size and try again.");
+    // A photo the hub refused (too large, wrong type, storage full) says why
+    // in the hub's words; any other failure is this app's one line.
+    const refused = (err?.status >= 400 && err?.status < 500) || err?.status === 507;
+    showError(refused && err.message ? err.message : failText(err, "Couldn’t upload the photo — try again."));
   }
 });
 
