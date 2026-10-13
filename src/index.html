@@ -134,6 +134,9 @@ let notice = "";
 let modalEl = null;
 // The post whose photo is having its background removed or put back, if any.
 let cutoutBusy = "";
+// The photo already uploaded from the open post form, so that pressing Post
+// again after a failed save reuses it instead of uploading a second copy.
+let draftUpload = null;
 
 function nowIso() { return new Date().toISOString(); }
 function uid() { return crypto.randomUUID(); }
@@ -227,9 +230,11 @@ function canManage(post) { return canManageOf(post, currentMember, TENANT); }
 function matchesFor(post) { return matchesForOf(post, posts); }
 
 // ── mutations ────────────────────────────────────────────────────────────────
+// Resolves true once the post is saved. On a failed save it says so in the
+// form, which stays open as typed, and resolves false.
 async function createPost(fields, fileId, thumbId = null) {
   const title = fields.title.trim();
-  if (!title) return showError("Give the item a short title.");
+  if (!title) { showFormError("Give the item a short title."); return false; }
   const row = {
     id: uid(), kind: draftKind, title, category: fields.category,
     description: fields.description.trim(), location: fields.location.trim(),
@@ -254,7 +259,8 @@ async function createPost(fields, fileId, thumbId = null) {
     posts = [row, ...posts];
     closeModal();
     showNotice(`Posted ${draftKind === "lost" ? "a lost" : "a found"} item.`);
-  } catch (e) { showError(failText(e, "Couldn’t post the item — try again.")); }
+    return true;
+  } catch (e) { showFormError(failText(e, "Couldn’t post the item — try again.")); return false; }
 }
 
 async function resolvePost(id) {
@@ -379,7 +385,16 @@ function openModal(html) {
   const f = modalEl.querySelector("[data-autofocus]");
   if (f) f.focus();
 }
-function closeModal() { modalEl?.remove(); modalEl = null; }
+function closeModal() { modalEl?.remove(); modalEl = null; draftUpload = null; }
+
+// The page's own error line sits behind the backdrop while the form is open,
+// so a failed post is reported inside the form.
+function showFormError(m) {
+  const el = document.getElementById("post-form-error");
+  if (!el) return showError(m);
+  el.textContent = m;
+  el.hidden = !m;
+}
 
 function openPostModal() {
   draftKind = "lost";
@@ -415,6 +430,7 @@ function openPostModal() {
         <label for="f-photo">Photo (optional)</label>
         <input id="f-photo" type="file" accept="image/*" />
       </div>` : ""}
+      <div class="error" id="post-form-error" role="alert" hidden></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" type="button" data-close>Cancel</button>
         <button class="btn" type="submit">Post</button>
@@ -538,23 +554,35 @@ document.addEventListener("submit", async (e) => {
   const val = (id) => document.getElementById(id)?.value ?? "";
   const title = val("f-title").trim();
   if (!title) { document.getElementById("f-title")?.focus(); return; }
+  if (btn?.disabled) return;
   if (btn) { btn.disabled = true; btn.textContent = "Posting…"; }
+  showFormError("");
   try {
     let fileId = "", thumbId = null;
     const fileInput = document.getElementById("f-photo");
-    if (fileInput && fileInput.files && fileInput.files[0]) {
-      // The hub keeps a small copy with the photo, which is what a card draws.
-      const up = await files.upload(fileInput.files[0], { thumbnail: true });
-      fileId = up.id;
-      thumbId = up.thumbnailId ?? null;
+    const file = fileInput?.files?.[0];
+    if (file) {
+      if (draftUpload?.file !== file) {
+        // The hub keeps a small copy with the photo, which is what a card draws.
+        const up = await files.upload(file, { thumbnail: true });
+        // The form was closed while the photo went up: nothing is posted, and
+        // the photo no post will name is handed back.
+        if (!e.target.isConnected) { files.delete(up.id).catch(() => {}); return; }
+        draftUpload = { file, id: up.id, thumbId: up.thumbnailId ?? null };
+      }
+      fileId = draftUpload.id;
+      thumbId = draftUpload.thumbId;
     }
     await createPost({ title, category: val("f-category"), description: val("f-description"), location: val("f-location") }, fileId, thumbId);
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = "Post"; }
     // A photo the hub refused (too large, wrong type, storage full) says why
     // in the hub's words; any other failure is this app's one line.
     const refused = (err?.status >= 400 && err?.status < 500) || err?.status === 507;
-    showError(refused && err.message ? err.message : failText(err, "Couldn’t upload the photo — try again."));
+    if (!e.target.isConnected) { console.error(err); return; }
+    showFormError(refused && err.message ? err.message : failText(err, "Couldn’t upload the photo — try again."));
+  } finally {
+    // A saved post has closed the form; a failed one gets its button back.
+    if (btn) { btn.disabled = false; btn.textContent = "Post"; }
   }
 });
 
