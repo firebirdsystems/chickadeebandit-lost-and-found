@@ -96,7 +96,7 @@
 import { esc, hubConfirm, createFilesHelper, searchMatch, glyph } from "/hub-sdk.js";
 import {
   CATEGORIES, CAT_LABEL, fmtDate, canManage as canManageOf, matchesFor as matchesForOf, searchableFields,
-  tilePhotoId, cutoutRefusal,
+  tilePhotoId, cutoutRefusal, outcomeUnknown, failureLine, uploadFailureLine,
 } from "./logic.js";
 
 const CONTEXT = window.__CONTEXT_URL ?? "";
@@ -145,7 +145,8 @@ async function dbq(sql, params = []) {
   if (!DB) return { rows: [] };
   const res = await fetch(DB, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql, params }) });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || "Couldn’t reach the hub. Try again.");
+  // The status (and the hub's `code`) say whether a failed write may have been stored.
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw Object.assign(new Error(json?.error || "Couldn’t reach the hub. Try again."), { status: res.status, code: json?.code });
   return json;
 }
 
@@ -163,14 +164,15 @@ async function dbBatch(statements) {
     body: JSON.stringify({ statements }),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok || !Array.isArray(body?.results)) throw Object.assign(new Error(body?.error ?? `batch failed (${res.status})`), { status: res.status });
+  if (!res.ok || !Array.isArray(body?.results)) throw Object.assign(new Error(body?.error ?? `batch failed (${res.status})`), { status: res.status, code: body?.code });
   return body.results;
 }
 
-// A failed write shows one fixed line for the action. Only wording this app
-// wrote for the reader (marked `forUser` where it is thrown) is shown as is;
-// the hub's own error text goes to the console.
-function failText(e, line) { if (!e?.forUser) console.error(e); return e?.forUser ? e.message : line; }
+// A failed write shows the line `failureLine` picks from the status ("try
+// again" only where trying again can work). Only wording this app wrote for the
+// reader (marked `forUser` where it is thrown) is shown as is; the hub's own
+// error text goes to the console.
+function failText(e, words) { if (!e?.forUser) console.error(e); return failureLine(e, words); }
 
 async function loadMembers() {
   if (!CONTEXT) {
@@ -215,11 +217,23 @@ function clearMessages() { error = ""; notice = ""; }
 function showError(m) { error = m; notice = ""; render(); }
 function showNotice(m) { notice = m; error = ""; render(); }
 
-// A write the hub narrowed to nothing: the board is re-read so it shows what
-// is really stored, and the message says the change did not land.
-async function writeMissed(message) {
+// Whether the posts are still stored, after a write that changed nothing:
+// true when all are, false when one is gone, null when the read failed.
+async function postsFound(ids) {
+  try {
+    const { rows } = await dbq(`SELECT id FROM app_lost_and_found__posts WHERE id IN (${ids.map(() => "?").join(", ")})`, ids);
+    return (rows ?? []).length === ids.length;
+  } catch (e) { console.error(e); return null; }
+}
+
+// A write the hub narrowed to nothing: re-read the posts it named. Gone: it was
+// removed. Still there: the row policy kept this plain `WHERE id = ?` write
+// from this member, the permission line. The board is re-read so it shows what
+// is really stored.
+async function writeMissed(ids, words) {
+  const found = await postsFound(ids);
   try { await loadPosts(); } catch {}
-  showError(message);
+  showError(failureLine(null, { ...words, found }));
 }
 
 // Client gate mirrors the owner_or_visibility policy: the owner can always
@@ -235,32 +249,68 @@ function matchesFor(post) { return matchesForOf(post, posts); }
 async function createPost(fields, fileId, thumbId = null) {
   const title = fields.title.trim();
   if (!title) { showFormError("Give the item a short title."); return false; }
-  const row = {
-    id: uid(), kind: draftKind, title, category: fields.category,
+  // The id is the form's, minted on its first Post and sent on every retry: a
+  // try whose answer was lost may have stored the post, and a second press
+  // must find it rather than store another naming the same photo.
+  const form = document.getElementById("post-form");
+  let row = {
+    id: form ? (form.dataset.rowId ||= uid()) : uid(), kind: draftKind, title, category: fields.category,
     description: fields.description.trim(), location: fields.location.trim(),
     photo_file_id: fileId || "", thumb_file_id: thumbId, visibility: "everyone", status: "open", matched_post_id: "",
     reported_by_id: currentMember.id, reported_by_name: currentMember.name,
     created_at: nowIso(), resolved_at: null,
   };
-  try {
-    if (DB) {
+  let note = "";
+  if (DB) {
+    try {
       await dbq(
         `INSERT INTO app_lost_and_found__posts (id, kind, title, category, description, location, photo_file_id, thumb_file_id, visibility, status, matched_post_id, reported_by_id, reported_by_name, created_at, resolved_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'everyone', 'open', '', ?, ?, ?, NULL)`,
         [row.id, row.kind, row.title, row.category, row.description, row.location, row.photo_file_id, row.thumb_file_id, row.reported_by_id, row.reported_by_name, row.created_at]
       );
+    } catch (e) {
+      // Unknown outcome: read the post back by the pinned id. Found means an
+      // earlier try landed and its success path never ran: it runs now, once.
+      // Not found, or the read failed: the usual line, the id stays pinned.
+      let stored = null;
+      let readFailed = false;
+      if (outcomeUnknown(e)) {
+        try { stored = (await dbq("SELECT * FROM app_lost_and_found__posts WHERE id = ?", [row.id])).rows?.[0] ?? null; }
+        catch (readErr) { console.error(readErr); readFailed = true; }
+      }
+      if (!stored) {
+        // Refused (a 4xx other than 400, or 507): no post names the photo, so
+        // it goes — unless an earlier try with it went unanswered, and a post
+        // it made may name it. With the answer lost it is kept for the next Post.
+        if (outcomeUnknown(e)) { if (draftUpload?.id === fileId) draftUpload.unheard = true; }
+        else if (fileId && !(draftUpload?.id === fileId && draftUpload.unheard)) {
+          files.delete(fileId).catch(() => {});
+          if (draftUpload?.id === fileId) draftUpload = null;
+        }
+        // The id is ours: with the read-back failed, a UNIQUE answer may be this
+        // form's own first try, so nothing is known — "try again", not "already exists".
+        showFormError(failText(readFailed ? new Error("post outcome unknown", { cause: e }) : e, { action: "post the item", thing: "post" }));
+        return false;
+      }
+      console.error(e);
+      if (["kind", "title", "category", "description", "location", "photo_file_id"]
+        .some((k) => String(stored[k] ?? "") !== String(row[k] ?? ""))) note = "Saved as first entered — check it and update what changed.";
+      // A photo picked since that first try is named by no post: it goes.
+      if (fileId && stored.photo_file_id !== fileId) files.delete(fileId).catch(() => {});
+      row = stored;
     }
-    await publishEvent("lost_and_found.post_created", row.id, {
-      kind: row.kind,
-      category: row.category,
-      location: row.location,
-      reported_by_id: row.reported_by_id,
-    });
-    posts = [row, ...posts];
-    closeModal();
-    showNotice(`Posted ${draftKind === "lost" ? "a lost" : "a found"} item.`);
-    return true;
-  } catch (e) { showFormError(failText(e, "Couldn’t post the item — try again.")); return false; }
+  }
+  await publishEvent("lost_and_found.post_created", row.id, {
+    kind: row.kind,
+    category: row.category,
+    location: row.location,
+    reported_by_id: row.reported_by_id,
+  });
+  posts = [row, ...posts.filter((p) => p.id !== row.id)];
+  closeModal();
+  if (note) showError(note);
+  else showNotice(`Posted ${row.kind === "lost" ? "a lost" : "a found"} item.`);
+  return true;
 }
 
 async function resolvePost(id) {
@@ -272,7 +322,7 @@ async function resolvePost(id) {
   try {
     if (DB) {
       const { changed } = await dbq(`UPDATE app_lost_and_found__posts SET status='resolved', resolved_at=? WHERE id=?`, [now, id]);
-      if (changed === 0) return writeMissed("This post can no longer be changed.");
+      if (changed === 0) return writeMissed([id], { action: "resolve the post", thing: "post" });
     }
     patchPost(id, { status: "resolved", resolved_at: now });
     await publishEvent("lost_and_found.post_resolved", id, {
@@ -281,7 +331,7 @@ async function resolvePost(id) {
       resolved_at: now,
     });
     showNotice("Marked resolved.");
-  } catch (e) { showError(failText(e, "Couldn’t resolve the post — try again.")); }
+  } catch (e) { showError(failText(e, { action: "resolve the post", thing: "post" })); }
 }
 
 async function confirmMatch(postId, matchId) {
@@ -308,8 +358,9 @@ async function confirmMatch(postId, matchId) {
     patchPost(matchId, { status: "resolved", matched_post_id: postId, resolved_at: now });
     showNotice("Matched and closed both posts. 🎉");
   } catch (e) {
-    if (e.status === 409) return writeMissed("These posts can no longer be closed together.");
-    showError(failText(e, "Couldn’t close the posts — try again."));
+    // A batch's 409: requireChanges found a write that changed nothing.
+    if (e.status === 409) return writeMissed([postId, matchId], { action: "close these posts", thing: "post" });
+    showError(failText(e, { action: "close the posts", thing: "post" }));
   }
 }
 
@@ -327,11 +378,11 @@ async function deletePost(id) {
     // on the expiry path; the delete path was the gap.
     if (DB) {
       const { changed } = await dbq(`DELETE FROM app_lost_and_found__posts WHERE id=?`, [id]);
-      if (changed === 0) return writeMissed("This post can no longer be deleted.");
+      if (changed === 0) return writeMissed([id], { action: "delete the post", thing: "post" });
     }
     posts = posts.filter(p => p.id !== id);
     showNotice("Deleted.");
-  } catch (e) { showError(failText(e, "Couldn’t delete the post — try again.")); }
+  } catch (e) { showError(failText(e, { action: "delete the post", thing: "post" })); }
 }
 
 // ── photo background ─────────────────────────────────────────────────────────
@@ -350,7 +401,9 @@ async function removeBackground(id) {
     const { changed } = await dbq("UPDATE app_lost_and_found__posts SET cutout_file_id=?, cutout_thumb_file_id=? WHERE id=? AND photo_file_id=?",
       [cut.id, smallId, id, photoId]);
     if (changed) patchPost(id, { cutout_file_id: cut.id, cutout_thumb_file_id: smallId });
-  } catch (e) { error = e.status ? cutoutRefusal(e.status, e.detail) : failText(e, "Couldn’t remove the background — try again."); }
+  } catch (e) { // The cutout's own named refusals keep their lines; the rest (403, no
+    // answer, a 400 or another 5xx, from the cutout or its UPDATE) the table's.
+    error = [402, 409, 413, 415, 429, 503, 507].includes(e.status) ? (console.error(e), cutoutRefusal(e.status, e.detail)) : failText(e, { action: "remove the background", thing: "post" }); }
   cutoutBusy = ""; render();
 }
 
@@ -363,9 +416,9 @@ async function restoreBackground(id) {
     // The hub reclaims the cutout and its small copy once no row names them.
     // The photo is untouched.
     const { changed } = await dbq("UPDATE app_lost_and_found__posts SET cutout_file_id=NULL, cutout_thumb_file_id=NULL WHERE id=?", [id]);
-    if (changed === 0) error = "This post’s photo can no longer be changed.";
+    if (changed === 0) error = failureLine(null, { action: "restore the photo", thing: "post", found: await postsFound([id]) });
     else patchPost(id, { cutout_file_id: null, cutout_thumb_file_id: null });
-  } catch (e) { error = failText(e, "Couldn’t restore the photo — try again."); }
+  } catch (e) { error = failText(e, { action: "restore the photo", thing: "post" }); }
   cutoutBusy = ""; render();
 }
 
@@ -575,11 +628,11 @@ document.addEventListener("submit", async (e) => {
     }
     await createPost({ title, category: val("f-category"), description: val("f-description"), location: val("f-location") }, fileId, thumbId);
   } catch (err) {
-    // A photo the hub refused (too large, wrong type, storage full) says why
-    // in the hub's words; any other failure is this app's one line.
-    const refused = (err?.status >= 400 && err?.status < 500) || err?.status === 507;
-    if (!e.target.isConnected) { console.error(err); return; }
-    showFormError(refused && err.message ? err.message : failText(err, "Couldn’t upload the photo — try again."));
+    // A photo the hub refused (too large, wrong type, storage full) says why in
+    // this app's words; never the hub's.
+    console.error(err);
+    if (!e.target.isConnected) return;
+    showFormError(uploadFailureLine(err, { action: "upload the photo", thing: "photo" }));
   } finally {
     // A saved post has closed the form; a failed one gets its button back.
     if (btn) { btn.disabled = false; btn.textContent = "Post"; }
