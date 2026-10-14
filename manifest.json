@@ -76,22 +76,21 @@
       "kind": "owner_or_visibility",
       "member_column": "reported_by_id",
       "visibility_column": "visibility",
-      "everyone_values": ["everyone"],
-      "retain_days": {
-        "default": 365,
-        "timestamp_column": "created_at",
-        "override_key": "post_history",
-        "file_id_column": "photo_file_id",
-        "exempt_when": { "column": "status", "values": ["open"] }
-      }
+      "everyone_values": ["everyone"]
+    }
+  },
+  "retention": {
+    "posts": {
+      "default": 365,
+      "timestamp_column": "created_at",
+      "override_key": "post_history",
+      "file_id_column": "photo_file_id",
+      "exempt_when": { "column": "status", "values": ["open"] }
     }
   },
   "required_capabilities": ["image_cutout"],
-  "delete_file_columns": {
-    "posts": ["photo_file_id", "thumb_file_id", "cutout_file_id", "cutout_thumb_file_id"]
-  },
-  "update_file_columns": {
-    "posts": ["photo_file_id", "thumb_file_id", "cutout_file_id", "cutout_thumb_file_id"]
+  "file_columns": {
+    "posts": { "columns": ["photo_file_id", "thumb_file_id", "cutout_file_id", "cutout_thumb_file_id"] }
   },
   "member_references": {
     "posts": {
@@ -110,7 +109,6 @@
     "display": { "template": "badge", "count": "n", "label": "open posts", "severity": "info" }
   },
   "resource_limits": {
-    "max_db_bytes": 10485760,
     "max_file_bytes": 5242880,
     "max_files_bytes": 209715200
   },
