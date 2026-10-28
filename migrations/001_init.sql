@@ -12,7 +12,7 @@
 -- without checking it against that list first — ciphertext is AES-GCM with a
 -- random IV, so equality never matches and nothing errors.
 CREATE TABLE IF NOT EXISTS app_lost_and_found__posts (
-  id               TEXT PRIMARY KEY,
+  id               TEXT NOT NULL PRIMARY KEY,
   kind             TEXT NOT NULL DEFAULT 'lost',   -- 'lost' | 'found'
   title            TEXT NOT NULL,
   category         TEXT NOT NULL DEFAULT 'other',  -- 'pet' | 'keys' | 'package' | 'bike' | 'wallet' | 'other'
